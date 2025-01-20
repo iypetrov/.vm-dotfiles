@@ -55,11 +55,6 @@ set wildignore+=*.pyc         " Ignore Python compiled files
 set wildignore+=*.rbc         " Ignore Rubinius compiled files
 set wildignore+=*.swp         " Ignore vim backups
 
-" MacVim
-set guifont=Menlo\ Regular:h16
-
-" Key Mappings
-
 " Make navigation up and down a lot more pleasent
 map j gj
 map k gk
@@ -106,24 +101,27 @@ endif
 
 call plug#begin()
 
-Plug 'nanotech/jellybeans.vim'
+Plug 'morhetz/gruvbox'
 Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
 Plug 'junegunn/fzf.vim'
 Plug 'preservim/nerdtree'
 Plug 'MattesGroeger/vim-bookmarks'
 Plug 'airblade/vim-gitgutter'
+Plug 'mbbill/undotree'
 
 Plug 'prabirshrestha/vim-lsp'
 Plug 'mattn/vim-lsp-settings'
 Plug 'prabirshrestha/asyncomplete.vim'
 Plug 'prabirshrestha/asyncomplete-lsp.vim'
 Plug 'fatih/vim-go', { 'do': ':GoUpdateBinaries' }
+Plug 'elixir-editors/vim-elixir'
 
 call plug#end()
 
-" jellybeans
+" gruvbox
 set termguicolors
-colorscheme jellybeans
+set background=light
+colorscheme gruvbox
 
 " fzf.vim
 nnoremap <leader>ff :GFiles<CR>
@@ -154,6 +152,9 @@ nmap <C-n> <Plug>BookmarkNext
 let g:gitgutter_sign_added = '+'
 let g:gitgutter_sign_modified = '~'
 let g:gitgutter_sign_removed = '-'
+
+" undotree
+nmap <leader>h :UndotreeToggle<CR>
 
 " vim-lsp
 nmap <leader>[[ :LspPreviousError<CR>
