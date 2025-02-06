@@ -5,11 +5,7 @@ set encoding=utf-8
 let mapleader=" "         " The <leader> key
 set autoread              " Reload files that have not been modified
 set backspace=2           " Makes backspace behave like you'd expect
-" set colorcolumn=80        " Highlight 80 character limit
-set tabstop=4             " Make tab spacing
-set softtabstop=4
-set shiftwidth=4
-set expandtab
+set colorcolumn=80        " Highlight 80 character limit
 set hidden                " Allow buffers to be backgrounded without being saved
 set number relativenumber " Show the liner numbes in realtive mode
 set ruler                 " Show the line number and column in the status bar
@@ -59,6 +55,10 @@ set wildignore+=*.swp         " Ignore vim backups
 map j gj
 map k gk
 
+" Make splits
+nnoremap <leader>s :split<CR>
+nnoremap <leader>v :vsplit<CR>
+
 " Make navigating around splits easier
 nnoremap <C-j> <C-w>j
 nnoremap <C-k> <C-w>k
@@ -75,7 +75,7 @@ vnoremap <leader>Y "+Y
 nnoremap <leader>pv :Ex<CR>
 
 " Replace currrent word occurrences
-nnoremap <leader>s :%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>
+nnoremap <leader>r :%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>
 
 " Get rid of search highlights
 noremap <silent><leader>/ :nohlsearch<cr>
@@ -87,10 +87,214 @@ cmap w!! %!sudo tee > /dev/null %
 nnoremap <leader>d   :bd<cr>
 
 " Clear whitespace at the end of lines automatically
-autocmd BufWritePre * :%s/\s\+$//e
+" autocmd BufWritePre * :%s/\s\+$//e
 
 " Don't fold anything.
 autocmd BufWinEnter * set foldlevel=999999
+
+" Telescope
+let g:recent_files = copy(v:oldfiles)
+
+function! AddToRecentFiles(file)
+  let file = expand(a:file)
+  call filter(g:recent_files, 'v:val !=# file')
+  call insert(g:recent_files, file)
+  if len(g:recent_files) > 100
+    let g:recent_files = g:recent_files[:99]
+  endif
+endfunction
+
+autocmd BufRead * call AddToRecentFiles(expand('<afile>:p'))
+
+function! FzfGitAllFiles()
+  let git_root = systemlist('git rev-parse --show-toplevel')[0]
+  if v:shell_error
+    echo 'Not in a Git repository'
+    return
+  endif
+
+  let git_files_relative = split(system('git ls-files'), '\n')
+
+  if empty(git_files_relative)
+    echo 'No files in the current Git project'
+    return
+  endif
+
+  call fzf#run(fzf#wrap({
+        \ 'source': git_files_relative,
+        \ 'sink': { file -> execute('e ' . git_root . '/' . file) },
+        \ 'options': '--prompt="> " --preview="bat --style=numbers --color=always --line-range :500 ' . git_root . '/{}"'
+        \ }))
+endfunction
+
+function! FzfGitRecentFiles()
+  let git_root = systemlist('git rev-parse --show-toplevel')[0]
+  if v:shell_error
+    echo 'Not in a Git repository'
+    return
+  endif
+
+  let git_files_relative = split(system('git ls-files'), '\n')
+
+  let git_files = map(git_files_relative, { _, file -> resolve(git_root . '/' . file) })
+
+  let recent_files = map(copy(g:recent_files), { _, file -> expand(file) })
+  let recent_git_files = filter(recent_files, { _, file -> index(git_files, file) >= 0 })
+
+  let recent_git_files_relative = map(recent_git_files, { _, file -> substitute(file, git_root . '/', '', '') })
+
+  if empty(recent_git_files_relative)
+    echo 'No recently visited files in the current Git project'
+    return
+  endif
+
+  call fzf#run(fzf#wrap({
+        \ 'source': recent_git_files_relative,
+        \ 'sink': { file -> execute('e ' . git_root . '/' . file) },
+        \ 'options': '--prompt="> " --preview="bat --style=numbers --color=always --line-range :500 ' . git_root . '/{}"'
+        \ }))
+endfunction
+
+function! FzfRgFiles(query)
+  let git_root = systemlist('git rev-parse --show-toplevel')[0]
+  if v:shell_error
+    echo 'Not in a Git repository'
+    return
+  endif
+
+  let git_files_relative = split(system('git ls-files'), '\n')
+
+  let rg_command = 'rg --column --line-number --no-heading --color=never --smart-case -e ' . shellescape(a:query) . ' '
+
+  let file_filter = join(map(copy(git_files_relative), { _, file -> shellescape(file) }), ' ')
+  let rg_command .= ' ' . file_filter
+
+  let rg_command .= ' | awk -v root="' . git_root . '/" ''{ sub(root, ""); print }'''
+
+  call fzf#vim#grep(rg_command, 1, fzf#vim#with_preview({'options': ['--nth=3..']}), 0)
+endfunction
+
+nnoremap <leader>ff :call FzfGitAllFiles()<CR>
+nnoremap <leader>fr :call FzfGitRecentFiles()<CR>
+nnoremap <Leader>fp :call FzfRgFiles("")<CR>
+
+" Harpoon
+let g:custom_tags = []
+
+function! ToggleCustomTag()
+    let file_path = expand('%:p')
+    let line_num = line('.')
+    let line_text = getline('.')
+
+    " Check if the tag already exists
+    let index_to_remove = -1
+    for i in range(len(g:custom_tags))
+        if g:custom_tags[i].file == file_path && g:custom_tags[i].line == line_num
+            let index_to_remove = i
+            break
+        endif
+    endfor
+
+    if index_to_remove != -1
+        " If the tag exists, remove it
+        call remove(g:custom_tags, index_to_remove)
+        echo "Removed tag at line " . line_num
+    else
+        " If the tag doesn't exist, add it
+        call add(g:custom_tags, {
+            \ 'file': file_path,
+            \ 'line': line_num,
+            \ 'text': line_text
+        \ })
+        echo "Added tag at line " . line_num
+    endif
+endfunction
+
+function! JumpToPreviousTag()
+    if len(g:custom_tags) == 0
+        echo "No tags found."
+        return
+    endif
+
+    let current_index = -1
+    for i in range(len(g:custom_tags))
+        if g:custom_tags[i].file == expand('%:p') && g:custom_tags[i].line == line('.')
+            let current_index = i
+            break
+        endif
+    endfor
+
+    if current_index == -1
+        let current_index = len(g:custom_tags)
+    endif
+
+    let prev_index = (current_index - 1) % len(g:custom_tags)
+    let prev_tag = g:custom_tags[prev_index]
+
+    execute 'edit ' . prev_tag.file
+    execute prev_tag.line
+endfunction
+
+function! JumpToNextTag()
+    if len(g:custom_tags) == 0
+        echo "No tags found."
+        return
+    endif
+
+    let current_index = -1
+    for i in range(len(g:custom_tags))
+        if g:custom_tags[i].file == expand('%:p') && g:custom_tags[i].line == line('.')
+            let current_index = i
+            break
+        endif
+    endfor
+
+    if current_index == -1
+        let current_index = -1
+    endif
+
+    let next_index = (current_index + 1) % len(g:custom_tags)
+    let next_tag = g:custom_tags[next_index]
+
+    execute 'edit ' . next_tag.file
+    execute next_tag.line
+endfunction
+
+function! ShowAllTags()
+    if len(g:custom_tags) == 0
+        echo "No tags found."
+        return
+    endif
+
+    let qf_list = []
+    for tag in g:custom_tags
+        call add(qf_list, {
+            \ 'filename': tag.file,
+            \ 'lnum': tag.line,
+            \ 'text': tag.text
+        \ })
+    endfor
+
+    call setqflist(qf_list)
+    copen
+
+    " Map dd to delete the current entry from the quickfix list and g:custom_tags
+    nnoremap <buffer> dd :call DeleteFromQuickfix()<CR>
+endfunction
+
+function! DeleteFromQuickfix()
+    let current_line = line('.') - 1 " Quickfix list is 1-indexed
+    if current_line >= 0 && current_line < len(g:custom_tags)
+        call remove(g:custom_tags, current_line)
+        call setqflist([])
+        call ShowAllTags()
+    endif
+endfunction
+
+nnoremap <leader>a :call ToggleCustomTag()<CR>
+nnoremap <C-p> :call JumpToPreviousTag()<CR>
+nnoremap <C-n> :call JumpToNextTag()<CR>
+nnoremap <leader><leader> :call ShowAllTags()<CR>
 
 " Plugins
 let data_dir = has('nvim') ? stdpath('data') . '/site' : '~/.vim'
@@ -101,13 +305,12 @@ endif
 
 call plug#begin()
 
-Plug 'morhetz/gruvbox'
+Plug 'aperezdc/vim-elrond'
 Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
-Plug 'junegunn/fzf.vim'
 Plug 'preservim/nerdtree'
-Plug 'MattesGroeger/vim-bookmarks'
 Plug 'airblade/vim-gitgutter'
 Plug 'mbbill/undotree'
+Plug 'github/copilot.vim'
 
 Plug 'prabirshrestha/vim-lsp'
 Plug 'mattn/vim-lsp-settings'
@@ -118,35 +321,15 @@ Plug 'elixir-editors/vim-elixir'
 
 call plug#end()
 
-" gruvbox
+" elrond
 set termguicolors
-set background=light
-colorscheme gruvbox
-
-" fzf.vim
-nnoremap <leader>ff :GFiles<CR>
-nnoremap <leader>fr :History<CR>
-nnoremap <leader>fp :Rg<CR>
+set background=dark
+colorscheme elrond
 
 " nerdtree
 let NERDTreeShowHidden=1
 let g:NERDTreeHijackNetrw=0
 nnoremap <C-t> :NERDTreeToggle<CR>
-
-" vim-bookmarks
-let g:bookmark_sign = '>>'
-let g:bookmark_save_per_working_dir = 1
-let g:bookmark_manage_per_buffer = 1
-let g:bookmark_auto_close = 1
-let g:bookmark_no_default_key_mappings = 1
-let g:bookmark_auto_save = 1
-let g:bookmark_highlight_lines = 1
-let g:bookmark_disable_ctrlp = 1
-
-nmap <leader>a <Plug>BookmarkToggle
-nmap <leader><leader> <Plug>BookmarkShowAll
-nmap <C-p> <Plug>BookmarkPrev
-nmap <C-n> <Plug>BookmarkNext
 
 " vim-gitgutter
 let g:gitgutter_sign_added = '+'
@@ -157,6 +340,14 @@ let g:gitgutter_sign_removed = '-'
 nmap <leader>h :UndotreeToggle<CR>
 
 " vim-lsp
+let g:lsp_diagnostics_virtual_text_enabled = 1
+let g:lsp_diagnostics_virtual_text_align = 'after'
+
+highlight LspDiagnosticsVirtualTextError guifg=Red ctermfg=Red
+highlight LspDiagnosticsVirtualTextWarning guifg=Yellow ctermfg=Yellow
+highlight LspDiagnosticsVirtualTextInformation guifg=Blue ctermfg=Blue
+highlight LspDiagnosticsVirtualTextHint guifg=Green ctermfg=Green
+
 nmap <leader>[[ :LspPreviousError<CR>
 nmap <leader>]] :LspNextError<CR>
 
@@ -203,4 +394,3 @@ augroup go_mappings
   autocmd FileType go nmap <leader>err :GoIfErr<CR>
   autocmd FileType go nmap <leader>dc :GoDocBrowser<CR>
 augroup END
-
